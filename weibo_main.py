@@ -343,6 +343,7 @@ class MainAddon:
 
 	# 微博详情
 	def item_extend_handler(self, data):
+		save_json_file(f'temp/item-{time()}.json', data)
 		if main_config['removeRelate'] or main_config['removeGood']:
 			title = data.get('trend', {}).get('titles', {}).get('title')
 			if main_config['removeRelate'] and title == '相关推荐':
@@ -360,6 +361,10 @@ class MainAddon:
 		#广告 暂时判断逻辑根据图片	https://h5.sinaimg.cn/upload/1007/25/2018/05/03/timeline_icon_ad_delete.png
 		if 'timeline_icon_ad_delete' in data.get('trend', {}).get('extra_struct', {}).get('extBtnInfo', {}).get('btn_picurl', {}):
 			del data['trend']
+
+		# 06.29 新版广告
+		if 'head_cards' in data:
+			del data['head_cards']
 
 		if 'custom_action_list' in data:
 			new_actions = []
@@ -398,7 +403,7 @@ class MainAddon:
 
 
 	def remove_comments(self, data):
-		del_type = []
+		del_type = ['广告',]
 		if main_config['removeRelateItem']:
 			del_type.append('相关内容')
 		if main_config['removeRecommendItem']:
@@ -559,8 +564,8 @@ class MainAddon:
 		eval("self." + method)(data)
 		res.text = json.dumps(data)
 
-# mitmweb -p 8888 --listen-host 10.2.147.108
-ip = '10.2.148.201'
+# mitmweb -p 8888 --listen-host 10.2.149.17
+ip = '10.2.146.175'
 # ip = '192.168.1.7'
 port = 8888
 opts = Options(listen_host=ip, listen_port=port)
