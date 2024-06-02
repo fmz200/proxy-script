@@ -1,9 +1,3 @@
-#pip install mitmproxy==6.0.2
-# https://www.mitmproxy.org/downloads
-from mitmproxy.options import Options
-from mitmproxy.proxy.config import ProxyConfig
-from mitmproxy.proxy.server import ProxyServer
-from mitmproxy.tools.dump import DumpMaster
 from util import *
 
 #微博详情页配置
@@ -57,7 +51,7 @@ class MainAddon:
 		self.launch_ad_url1 = '/interface/sdk/sdkad.php'
 		self.launch_ad_url2 = '/wbapplua/wbpullad.lua'
 
-		self.card_urls = ['/cardlist', '2/page?', 'video/community_tab', '/searchall']
+		self.card_urls = ['/cardlist', '2/page?', 'video/community_tab',]
 		self.statuses_urls = ['statuses/friends/timeline', 'statuses/unread_friends_timeline', 'statuses/unread_hot_timeline', 'groups/timeline']
 		self.other_urls = {
 			'/profile/me': 'remove_home',
@@ -75,13 +69,33 @@ class MainAddon:
 			'/search/finder': 'remove_search_main',
 			'/search/container_timeline': 'remove_search',
 			'/search/container_discover': 'remove_search',
+			'/searchall': 'remove_search',	#搜索
 			'/2/messageflow': 'remove_msg_ad',
-			'/statuses/container_timeline_topic': 'topic_handler',	#超话tab
+			'/statuses/container_timeline_topicpage': 'topic_handler',	#超话tab
 			'/push/active': 'handle_push',	# 处理一些界面设置，目前只有首页右上角红包通知
 			'/statuses/container_timeline?': 'remove_main',
 			'/statuses/container_timeline_unread': 'remove_main',
+			'/statuses/repost_timeline': 'remove_repost',	# 转发列表的广告
 			# '/remind/unread_count': 'unread_count_handler',		 
 		}
+
+
+	def remove_repost(self, data):
+		items = data.get('reposts', [])
+		new_items = []
+		for item in items:
+			if not self.is_ad(item):
+				new_items.append(item)
+		data['reposts'] = new_items
+
+		hot_items = data.get('hot_reposts', [])
+		new_hot_items = []
+		for item in hot_items:
+			if not self.is_ad(item):
+				new_hot_items.append(item)
+		data['hot_reposts'] = new_hot_items
+		print('remove_repost success')
+
 
 	# 新版主页广告地址
 	def remove_main(self, data):
@@ -93,7 +107,7 @@ class MainAddon:
 			if not self.is_ad(item.get('data')):
 				new_items.append(item)
 		data['items'] = new_items
-		print('remove_main success');
+		print('remove_main success')
 
 
 	def topic_handler(self, data):
@@ -125,13 +139,14 @@ class MainAddon:
 				c_data = c.get('data', {})
 				if c_data.get('top', {}).get('title') == '正在活跃':
 					add_flag = False
-				elif c_data.get('card_type') == 200 and c_data.get('group'):	#更多超话
+				elif 'infeed_may_interest_in' in c_data.get('itemid', ''):	#更多超话
+					print('remove 你可能感兴趣的超话')
 					add_flag = False
 			if add_flag:
 				new_items.append(c)
 		data['items'] = new_items
 		print('remove topic success');
-		# save_json_file('temp/4.json', new_items)
+		save_json_file(f'temp/topic-{time()}.json', new_items)
 
 
 	def remove_search_main(self, data):
@@ -152,6 +167,8 @@ class MainAddon:
 		if item.get('category') != 'card':
 			return False
 		item_data = item.get('data', {})
+		if 'adid' in item_data:
+			return True
 		return item_data.get('itemid') in ["finder_window", "more_frame"]
 
 
@@ -170,7 +187,7 @@ class MainAddon:
 				if not self.check_search_window(item):
 					new_items.append(item)
 		data['items'] = new_items
-		print('remove_search success');
+		print('remove_search success')
 
 
 	def remove_msg_ad(self, data):
@@ -211,12 +228,12 @@ class MainAddon:
 		data['cards'] = new_cards
 
 
-	# 判断首页流 感兴趣的超话
+	# 判断首页流 感兴趣的超话 "常看的视频号"
 	def check_junk_topic(self, item):
 		if item.get('category') != 'group':
 			return False
 		try:
-			if item.get('items')[0]['data']['title'] == '关注你感兴趣的超话':
+			if item.get('trend_name') in ['super_topic_recommend_card', 'recommend_video_card']:
 				return True
 		except Exception as e:
 			pass
@@ -333,7 +350,7 @@ class MainAddon:
 				title = get_json_val(item, '$.header.title.content', True)
 				if title == '微博之夜':
 					continue
-			elif re.search('100505_-_meattent_-_\d+', item_id):
+			elif re.search(r'100505_-_meattent_-_\d+', item_id):
 				continue
 			else:
 				new_items.append(item)
@@ -353,18 +370,25 @@ class MainAddon:
 		if main_config['removeFollow']:
 			if 'follow_data' in data:
 				del data['follow_data']
-		if 'reward_info' in data:
-			del data['reward_info']
-		if 'page_alerts' in data:
-			del data['page_alerts']
+		for k in ['head_cards' ,'reward_info', 'page_alerts']:	# head_cards 06.29 新版广告, reward_info 打赏作者， highlight 高亮的词	
+			if k in data:
+				del data[k]
 		
+		# if 'display_info' in data:
+		# 	for dis_item in data['display_info']:
+		# 		for k in dis_item.keys():
+		# 			dis_item[k] = None
+		data["extend_info"] = {
+			"bg_cards": [{
+				"adid": "KA-20969",
+				"keywords": "感冒"
+			}]
+		}
+		data['highlight'] = {"adids": ["KA-20969"]}
+		data["display_info"] = [{"KA-20969": {"pic_front": "", "type": 1, "screening_strategy": 1, "delivery_scope": 255, "word_url": "", "key_words": "感冒"}}]
 		#广告 暂时判断逻辑根据图片	https://h5.sinaimg.cn/upload/1007/25/2018/05/03/timeline_icon_ad_delete.png
 		if 'timeline_icon_ad_delete' in data.get('trend', {}).get('extra_struct', {}).get('extBtnInfo', {}).get('btn_picurl', {}):
 			del data['trend']
-
-		# 06.29 新版广告
-		if 'head_cards' in data:
-			del data['head_cards']
 
 		if 'custom_action_list' in data:
 			new_actions = []
@@ -373,7 +397,7 @@ class MainAddon:
 				if _type in item_menus_config and not item_menus_config[_type]:
 					pass
 				else:
-					print(_type)
+					# print(_type)
 					if _type == 'mblog_menus_copy_url':
 						new_actions.insert(0, action)
 					else:
@@ -508,7 +532,7 @@ class MainAddon:
 		imgs = ["006Y6guWly1gdc0r26dwdj30ku114n4p","006Y6guWly1gdc0r1nj1oj30n01dstla","006Y6guWly1gdc0r2h1p5j30n01ds4qp","006Y6guWly1gemhviru7rj30n01dsnpe","006Y6guWly1gemhvj5se8j30n01dsag4","006Y6guWly1gdc0r3gv3sj30n01dsu0y","006Y6guWly1gdc0r3ujlxj30n01ds7qq","006Y6guWly1gdc0r4cgzwj30n01dsn3t","006Y6guWly1gdc0r4ish2j30n01dsafk"]
 
 		if self.launch_ad_url1 in url:
-			temp = re.search('\{.*\}', data)
+			temp = re.search(r'{.*}', data)
 			if not temp:
 				return data
 			res = json.loads(temp.group())
@@ -549,7 +573,7 @@ class MainAddon:
 		req = flow.request
 
 		# self.test(flow)
-
+		# print('\nurl:', req.url)
 		if self.launch_ad_url1 in req.url or self.launch_ad_url2 in req.url:
 			res = flow.response
 			res.text = self.remove_launch_ad(req.url, res.text)
@@ -564,20 +588,5 @@ class MainAddon:
 		eval("self." + method)(data)
 		res.text = json.dumps(data)
 
-# mitmweb -p 8888 --listen-host 10.2.149.17
-ip = '10.2.146.175'
-# ip = '192.168.1.7'
-port = 8888
-opts = Options(listen_host=ip, listen_port=port)
-opts.add_option("body_size_limit", int, 0, "")
 
-m = DumpMaster(opts, with_termlog=False, with_dumper=False)
-config = ProxyConfig(opts)
-m.server = ProxyServer(config)
-m.addons.add(MainAddon())
-
-try:
-	print('\nproxy:', ip, port)
-	m.run()
-except KeyboardInterrupt:
-	m.shutdown()
+asyncio.run(start_proxy(MainAddon()))
